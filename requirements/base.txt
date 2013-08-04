@@ -1,0 +1,4 @@
+Django>=1.5                         # BSD
+jsonfield>=0.9.15                   # MIT
+#django-tables2>=0.13.0              # BSD
+#django-crispy-forms                 # MIT
