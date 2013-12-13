@@ -1,28 +1,45 @@
-from __future__ import unicode_literals
-from functools import partial
+from __future__ import unicode_literals, absolute_import
+
+from weakref import WeakKeyDictionary
 
 from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
-from django.db.models.signals import pre_save, pre_delete
 from django.db import models
 
-from .models import ModelChange, RequestLog
-from .utils import get_dict
 from . import settings as audit_settings
+from .models import ModelChange
 
 
+tracked_models = []
+
+
+# making this a descripor that just stores a dict of instance -> meta mappings means
+# that it doesn't even need to be an attr anymore. But I haven't changed that.
 class AuditMeta(object):
+    class InstanceMeta(object):
+        def __init__(self, audit=True):
+            self.additional_kwargs = {}
+            self.pre_save = None
+            self.audit = audit
+
+        def update_additional_kwargs(self, updates=None, **update_kwargs):
+            if updates:
+                self.additional_kwargs.update(updates)
+            if update_kwargs:
+                self.additional_kwargs.update(update_kwargs)
+
+        def reset(self):
+            self.additional_kwargs = {}
+            self.pre_save = None
 
     def __init__(self):
         self.audit = True
-        self.additional_kwargs = {}
-        self.pre_save = None
+        self.instance_map = WeakKeyDictionary()
 
-    def update_additional_kwargs(self, updates=None, **update_kwargs):
-        if updates:
-            self.additional_kwargs.update(updates)
-        if update_kwargs:
-            self.additional_kwargs.update(update_kwargs)
+    def __get__(self, instance, owner):
+        if not instance is None:
+            return self.instance_map.setdefault(instance, self.InstanceMeta(self.audit))
+        return self
 
 
 class AuditLog(object):
@@ -62,8 +79,11 @@ class AuditLog(object):
             return AuditLog.Manager(model_type, instance)
 
     # methods
-    def __init__(self, exclude=[]):
-        self.exclude = exclude
+    def __init__(self, exclude=None):
+        if not exclude:
+            self.exclude = exclude
+        else:
+            self.exclude = []
 
     def contribute_to_class(self, cls, name):
         self.attr_name = name
@@ -71,6 +91,7 @@ class AuditLog(object):
         descriptor = AuditLog.Descriptor(cls)
         setattr(cls, self.attr_name, descriptor)
         setattr(cls, audit_settings.AUDIT_META_NAME, AuditMeta())
+        tracked_models.append(cls)
 
     def connect_signals(self, cls):
         models.signals.post_save.connect(self.post_save_handler, sender=cls, weak=False)
@@ -79,8 +100,11 @@ class AuditLog(object):
         models.signals.pre_delete.connect(self.pre_save_handler, sender=cls, weak=False)
 
     def build_kwargs_from_instance(self, instance):
+        from payments.models import Patient
         kwargs = {}
-        # Hook to get app-sepcific kwargs to build the audit model
+
+        # hook to add app specific kwargs... not sure how to allow hooking into it though
+        # also really requires you to be able to add custom fields to the main audit model as well
 
         return kwargs
 
@@ -99,15 +123,19 @@ class AuditLog(object):
         audit_meta.update_additional_kwargs(self.build_kwargs_from_instance(instance))
 
     def post_save_handler(self, sender, instance, created, **kwargs):
+        meta = getattr(instance, audit_settings.AUDIT_META_NAME)
         if kwargs.get('raw', False) or not self.should_log_change(sender, instance):
             return
         action = 'CREATE' if created else 'UPDATE'
         self.create_change_object(instance, action)
+        meta.reset()
 
     def post_delete_handler(self, sender, instance, **kwargs):
+        meta = getattr(instance, audit_settings.AUDIT_META_NAME)
         if kwargs.get('raw', False) or not self.should_log_change(sender, instance):
             return
         self.create_change_object(instance, 'DELETE')
+        meta.reset()
 
     def create_change_object(self, instance, action):
         audit_meta = getattr(instance, audit_settings.AUDIT_META_NAME)
@@ -140,78 +168,16 @@ class AuditLog(object):
         return audit_settings.CHANGE_LOGGING
 
     @classmethod
-    def decorate(cls, field_name='audit_log', exclude=[]):
+    def decorate(cls, field_name='audit_log', exclude=None):
         """allows use as a model class decorator instead of adding as a field"""
 
         def add_field(klass):
-            audit_log = cls(exclude)
+            if exclude is None:
+                audit_log = cls([])
+            else:
+                audit_log = cls(exclude)
+
             audit_log.contribute_to_class(klass, field_name)
             return klass
 
         return add_field
-
-
-class ViewAudit(object):
-    DISPATCH_UID_EXTRA = '_VIEW_AUDIT'
-
-    class Mixin(object):
-        """
-        a django CBV mixin for logging requests and additional metadata
-
-        if used with a Django Rest Framework view, it will also pull additional
-        data from the request.
-        """
-
-        def dispatch(self, request, *args, **kwargs):
-            self._audit_request = ViewAudit._pre_dispatch(self, request)
-            response = super(ViewAudit.Mixin, self).dispatch(request, *args, **kwargs)
-            ViewAudit._post_dispatch(self, request, response)
-            del self._audit_request
-            return response
-
-        def initial(self, request, *args, **kwargs):
-            # override the DRF finalize response to get additional data.
-            super(ViewAudit.Mixin, self).initial(request, *args, **kwargs)
-            if hasattr(self, '_audit_request'):
-                self._audit_request.data = get_dict(request.DATA)
-                self._audit_request.user = request.user
-                self._audit_request.save()
-
-    @classmethod
-    def _presave_signal_handler(cls, sender, instance, audit_kwargs, **kwargs):
-        audit_meta = getattr(instance, audit_settings.AUDIT_META_NAME, None)
-        if audit_meta and getattr(audit_meta, 'audit'):
-            audit_meta.update_additional_kwargs(audit_kwargs)
-
-    @classmethod
-    def _pre_dispatch(cls, view, request):
-        # build partial for presave handler
-        audit_request = RequestLog.objects.create_from_request(request)
-        handler_function = partial(cls._presave_signal_handler, audit_kwargs={'request': audit_request})
-
-        # connect signals
-        pre_save.connect(handler_function, dispatch_uid=(audit_settings.DISPATCH_UID + cls.DISPATCH_UID_EXTRA, request), weak=False)
-        pre_delete.connect(handler_function, dispatch_uid=(audit_settings.DISPATCH_UID + cls.DISPATCH_UID_EXTRA, request), weak=False)
-
-        # return this so we can alter it if necessary
-        return audit_request
-
-    @classmethod
-    def _post_dispatch(cls, view, request, response):
-        # clean up signals
-        pre_save.disconnect((audit_settings.DISPATCH_UID + cls.DISPATCH_UID_EXTRA, request))
-        pre_delete.disconnect(dispatch_uid=(audit_settings.DISPATCH_UID + cls.DISPATCH_UID_EXTRA, request))
-
-    @classmethod
-    def decorate(cls, view_func):
-        """
-        a decorator for logging requests and additional data for functional views
-        """
-
-        def wrapped_view(request, *args, **kwargs):
-            cls._pre_dispatch(None, request)
-            response = view_func(request, *args, **kwargs)
-            cls._post_dispatch(None, request, response)
-            return response
-
-        return wrapped_view

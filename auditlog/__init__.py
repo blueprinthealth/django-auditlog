@@ -8,6 +8,8 @@ __version__ = '0.3'
 # except if request and SQL logging is enabled, then all queries, including those, will be logged
 
 # import the common thing, for convienence
+from __future__ import absolute_import
+
 from .default_settings import settings
-from .audit import AuditLog, ViewAudit
+from .audit import AuditLog
 from .utils import disable_audit

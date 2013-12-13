@@ -10,9 +10,16 @@ defaults = {
 
 
 class SettingsContainer(object):
-    def __init__(self, defaults={}, user_settings={}):
-        self.defaults = defaults
-        self.user_settings = user_settings
+    def __init__(self, defaults=None, user_settings=None):
+        if defaults is None:
+            self.defaults = {}
+        else:
+            self.defaults = defaults
+        if user_settings is None:
+            self.user_settings = {}
+        else:
+            self.user_settings = user_settings
+
         self.changed_settings = {}
 
     def __getattr__(self, attr):
@@ -30,4 +37,4 @@ class SettingsContainer(object):
     def reset(self):
         self.changed_settings = {}
 
-settings = SettingsContainer(defaults, getattr(global_settings, 'AUDITLOG_SETTINGS', {}))
+settings = SettingsContainer(defaults, getattr(global_settings, 'AUDIT_SETTINGS', {}))

@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from contextlib import contextmanager
+import functools
 from . import settings
 
 
@@ -12,8 +12,20 @@ def get_dict(obj):
     return obj
 
 
-@contextmanager
-def disable_audit():
-    settings.alter_settings(CHANGE_LOGGING=False, REQUEST_LOGGING=False)
-    yield
-    settings.reset()
+class DisableAuditContextManager(object):
+    """ dual-purpose decorator and context manager """
+    def __call__(self, func):
+        @functools.wraps(func)
+        def decorated_func(*args, **kwargs):
+            with self:
+                return func(*args, **kwargs)
+        return decorated_func
+
+    def __enter__(self):
+        settings.alter_settings(CHANGE_LOGGING=False, REQUEST_LOGGING=False)
+
+    def __exit__(self,*args):
+        settings.reset()
+
+
+disable_audit = DisableAuditContextManager()

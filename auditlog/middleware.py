@@ -25,13 +25,15 @@ class AuditMiddleware(object):
         # build kwargs to pass to the signal handler
         update_kwargs = {
             'user': user if isinstance(user, get_user_model()) else None,
+            'remote_addr': request.META.get('REMOTE_ADDR'),
+            'remote_host': request.META.get('REMOTE_HOST'),
         }
-        # other app-specific data can be added to update_kwargs here
 
-        update_request_data = partial(self.pre_action_handler, update_kwargs=update_kwargs)
+        # keep the strong ref on the request, its a sane lifetime
+        request._handler_func = partial(self.pre_action_handler, update_kwargs=update_kwargs)
 
-        pre_save.connect(update_request_data, dispatch_uid=(settings.DISPATCH_UID, request,), weak=False)
-        pre_delete.connect(update_request_data, dispatch_uid=(settings.DISPATCH_UID, request,), weak=False)
+        pre_save.connect(request._handler_func, dispatch_uid=(settings.DISPATCH_UID, request,),)
+        pre_delete.connect(request._handler_func, dispatch_uid=(settings.DISPATCH_UID, request,),)
         # TODO: add m2m changed handler?
 
     def process_response(self, request, response):
@@ -42,7 +44,7 @@ class AuditMiddleware(object):
 
         return response
 
-    def pre_action_handler(self, sender, instance, update_kwargs={}, **kwargs):
+    def pre_action_handler(self, sender, instance, update_kwargs=None, **kwargs):
         audit_meta = getattr(instance, settings.AUDIT_META_NAME, None)
-        if audit_meta and getattr(audit_meta, 'audit'):
+        if audit_meta and getattr(audit_meta, 'audit') and update_kwargs is not None:
             audit_meta.update_additional_kwargs(update_kwargs)
