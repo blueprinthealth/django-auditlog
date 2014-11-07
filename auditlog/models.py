@@ -2,9 +2,15 @@ from __future__ import unicode_literals, absolute_import
 
 from jsonfield import JSONField
 from django.db import models
-from django.contrib import contenttypes
 from django.utils.encoding import python_2_unicode_compatible
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
+
+try:
+    # django 1.7
+    from django.contrib.contenttypes.fields import GenericForeignKey
+except ImportError:
+    from django.contrib.contenttypes.generic import GenericForeignKey
 
 
 _ACTIONS = ('UPDATE', 'CREATE', 'DELETE')
@@ -25,9 +31,9 @@ class BaseAuditModel(models.Model):
 @python_2_unicode_compatible
 class ModelChange(BaseAuditModel):
     # original model
-    model_type = models.ForeignKey(contenttypes.models.ContentType, related_name='+')
+    model_type = models.ForeignKey(ContentType, related_name='+')
     model_pk = models.PositiveIntegerField()
-    model = contenttypes.generic.GenericForeignKey('model_type', 'model_pk')
+    model = GenericForeignKey('model_type', 'model_pk')
 
     # possibly have application specific attributes here
 

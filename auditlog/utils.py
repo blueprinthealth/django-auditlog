@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 import functools
-from . import settings
+from .default_settings import settings
 
 
 def get_dict(obj):

@@ -1,12 +1,10 @@
 from __future__ import unicode_literals, absolute_import
 
-from weakref import WeakKeyDictionary
-
 from django.contrib.contenttypes.models import ContentType
 from django.forms.models import model_to_dict
 from django.db import models
 
-from . import settings as audit_settings
+from .default_settings import settings as audit_settings
 from .models import ModelChange
 
 
@@ -34,12 +32,12 @@ class AuditMeta(object):
 
     def __init__(self):
         self.audit = True
-        self.instance_map = WeakKeyDictionary()
 
     def __get__(self, instance, owner):
-        if not instance is None:
-            return self.instance_map.setdefault(instance, self.InstanceMeta(self.audit))
-        return self
+        if instance is None:
+            return self
+        # set the attr in the instance's __dict__ which will bypass the descriptor anyhow
+        return instance.__dict__.setdefault(audit_settings.AUDIT_META_NAME, self.InstanceMeta(self.audit))
 
 
 class AuditLog(object):
@@ -61,12 +59,15 @@ class AuditLog(object):
             self.model_type = model_type
             self.instance = instance
 
-        def get_query_set(self):
-            base_queryset = super(AuditLog.Manager, self).get_query_set().filter(model_type=self.model_type)
+        def get_queryset(self):
+            base_queryset = super(AuditLog.Manager, self).get_queryset().filter(model_type=self.model_type)
             if not self.instance:
                 return base_queryset
             # TODO: have fallback or at least check that the model has an pk that is a positive integer
             return base_queryset.filter(model_pk=self.instance.pk)
+
+        def get_query_set(self):
+            return self.get_queryset()
 
     class Descriptor(object):
         def __init__(self, model_class):
@@ -100,11 +101,11 @@ class AuditLog(object):
         models.signals.pre_delete.connect(self.pre_save_handler, sender=cls, weak=False)
 
     def build_kwargs_from_instance(self, instance):
-        from payments.models import Patient
         kwargs = {}
 
         # hook to add app specific kwargs... not sure how to allow hooking into it though
         # also really requires you to be able to add custom fields to the main audit model as well
+        # can be saftely ignored
 
         return kwargs
 

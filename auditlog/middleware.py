@@ -4,7 +4,7 @@ from functools import partial
 from django.db.models.signals import pre_save, pre_delete
 from django.contrib.auth import get_user_model
 
-from . import settings
+from .default_settings import settings
 
 
 class AuditMiddleware(object):

@@ -23,7 +23,7 @@ class SettingsContainer(object):
         self.changed_settings = {}
 
     def __getattr__(self, attr):
-        if not attr in self.defaults:
+        if attr not in self.defaults:
             raise AttributeError("Invalid audit setting: '%s'" % attr)
 
         if attr in self.changed_settings:
