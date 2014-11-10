@@ -6,6 +6,7 @@ defaults = {
     'AUDIT_META_NAME': '_audit_meta',
     'CHANGE_LOGGING': True,
     'REQUEST_LOGGING': True,
+    'APP_LABEL': 'auditlog', # this setting only does anything in django 1.7+
 }
 
 

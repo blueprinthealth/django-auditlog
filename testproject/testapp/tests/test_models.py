@@ -1,8 +1,8 @@
 from django.forms.models import model_to_dict
 from django.contrib.auth.models import User
 
-from audit.models import ModelChange
-from audit.audit import AuditLog
+from auditlog.models import ModelChange
+from auditlog.audit import AuditLog
 from .base import AuditBaseTestCase
 from testapp import models
 
