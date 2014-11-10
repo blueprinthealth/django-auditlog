@@ -9,4 +9,4 @@ from __future__ import absolute_import
 
 default_app_config = 'auditlog.apps.AuditAppConfig'
 
-__version__ = '0.4'
+__version__ = '0.2'
