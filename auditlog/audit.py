@@ -6,12 +6,13 @@ from django.db import models
 
 from .default_settings import settings as audit_settings
 from .models import ModelChange
+from . import signals
 
 
 tracked_models = []
 
 
-# making this a descripor that just stores a dict of instance -> meta mappings means
+# making this a descriptor that just stores a dict of instance -> meta mappings means
 # that it doesn't even need to be an attr anymore. But I haven't changed that.
 class AuditMeta(object):
     class InstanceMeta(object):
@@ -45,7 +46,6 @@ class AuditLog(object):
     Provides a means of accessing and controlling audit functionality on a model
     """
 
-    # Inner classes
     class Manager(models.Manager):
         """
         an AuditLog.Manager is exposed as an instance attribute on models with an AuditLog, this is a manager
@@ -79,7 +79,6 @@ class AuditLog(object):
                 return AuditLog.Manager(model_type)
             return AuditLog.Manager(model_type, instance)
 
-    # methods
     def __init__(self, exclude=None):
         if not exclude:
             self.exclude = exclude
@@ -114,6 +113,9 @@ class AuditLog(object):
         if kwargs.get('raw', False) or not self.should_log_change(sender, instance):
             return
         audit_meta = getattr(instance, audit_settings.AUDIT_META_NAME)
+
+        signals.audit_presave.send(sender=self.__class__, model_instance=instance, audit_meta=audit_meta)
+
         if instance.pk is not None:
             try:
                 audit_meta.pre_save = model_to_dict(sender.objects.get(pk=instance.pk), exclude=self.exclude)

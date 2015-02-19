@@ -1,8 +1,11 @@
 from rest_framework.test import APIRequestFactory
 from django.db.models import signals
 from django.contrib.auth.models import User
+
+from auditlog.signals import audit_presave
 from auditlog.middleware import AuditMiddleware
 from .base import AuditBaseTestCase
+
 from testapp.models import TestModelOne, TestModelTwo
 
 
@@ -25,16 +28,14 @@ class AuditMiddlewareTest(AuditBaseTestCase):
         meta['REMOTE_ADDR'] = '1.2.3.4'
         request.META = meta
         self.request = request
+
         self.audit_middleware.process_request(request)
         self.presave_count = len(signals.pre_save.receivers)
+        self.audit_presave_count = len(audit_presave.receivers)
         self.predel_count = len(signals.pre_delete.receivers)
-
-    def test_adds_additional_kwargs(self):
-        audit_change = self.tm2.audit_log.latest()
-        self.assertEqual(audit_change.user, self.user2)
-        self.assertEqual(audit_change.remote_addr, '1.2.3.4')
 
     def test_cleans_up_signal_handlers_on_response(self):
         self.audit_middleware.process_response(self.request, None)
-        self.assertEqual(self.presave_count - 1, len(signals.pre_save.receivers))
-        self.assertEqual(self.predel_count - 1, len(signals.pre_delete.receivers))
+        self.assertEqual(self.presave_count, len(signals.pre_save.receivers))
+        self.assertEqual(self.predel_count, len(signals.pre_delete.receivers))
+        self.assertEqual(self.audit_presave_count - 1, len(audit_presave.receivers))
