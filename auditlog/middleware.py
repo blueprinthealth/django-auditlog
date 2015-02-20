@@ -1,10 +1,10 @@
 from __future__ import unicode_literals
 
 from functools import partial
-from django.db.models.signals import pre_save, pre_delete
 from django.contrib.auth import get_user_model
 
 from .default_settings import settings
+from . import signals
 
 
 class AuditMiddleware(object):
@@ -23,28 +23,26 @@ class AuditMiddleware(object):
             user = None
 
         # build kwargs to pass to the signal handler
-        update_kwargs = {
-            'user': user if isinstance(user, get_user_model()) else None,
-            'remote_addr': request.META.get('REMOTE_ADDR'),
-            'remote_host': request.META.get('REMOTE_HOST'),
-        }
+        update_kwargs = {}
+        if user and isinstance(user, get_user_model()):
+            update_kwargs['user'] = user
+        if request.META.get('REMOTE_ADDR'):
+            update_kwargs['remote_addr'] = request.META.get('REMOTE_ADDR')
+        if request.META.get('REMOTE_HOST'):
+            update_kwargs['remote_host'] = request.META.get('REMOTE_HOST')
 
         # keep the strong ref on the request, its a sane lifetime
         request._handler_func = partial(self.pre_action_handler, update_kwargs=update_kwargs)
 
-        pre_save.connect(request._handler_func, dispatch_uid=(settings.DISPATCH_UID, request,),)
-        pre_delete.connect(request._handler_func, dispatch_uid=(settings.DISPATCH_UID, request,),)
-        # TODO: add m2m changed handler?
+        signals.audit_presave.connect(request._handler_func, dispatch_uid=(settings.DISPATCH_UID, request,),)
 
     def process_response(self, request, response):
         # disconnect signals for this request
         # runs even if change logging is disabled in case it was disabled after the signal was created
-        pre_save.disconnect(dispatch_uid=(settings.DISPATCH_UID, request,))
-        pre_delete.disconnect(dispatch_uid=(settings.DISPATCH_UID, request,))
+        signals.audit_presave.disconnect(dispatch_uid=(settings.DISPATCH_UID, request,))
 
         return response
 
-    def pre_action_handler(self, sender, instance, update_kwargs=None, **kwargs):
-        audit_meta = getattr(instance, settings.AUDIT_META_NAME, None)
+    def pre_action_handler(self, sender, model_instance, audit_meta, update_kwargs=None, **kwargs):
         if audit_meta and getattr(audit_meta, 'audit') and update_kwargs is not None:
             audit_meta.update_additional_kwargs(update_kwargs)
