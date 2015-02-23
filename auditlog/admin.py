@@ -1,9 +1,39 @@
+from __future__ import absolute_import
 from __future__ import unicode_literals
 
+import json
 from django.contrib import admin
 from django.contrib.admin.util import flatten_fieldsets
+from django import forms
+from django.contrib.auth import get_user_model
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 
-from .forms import AuditChangeAdminForm
+from auditlog.models import ModelChange
+
+
+class DictionaryDisplayWidget(forms.Widget):
+    def render(self, name, value, attrs=None):
+        value = json.loads(value)
+        if value:
+            rows = []
+            for key, val in value.items():
+                rows.append('<tr><td>{key}</td><td>{val}</td></tr>'.format(
+                    key=escape(key),
+                    val=escape(val),
+                ))
+            return mark_safe("<table border='1'>{}</table>".format('\n'.join(rows)))
+
+
+class AuditChangeAdminForm(forms.ModelForm):
+    timestamp = forms.DateTimeField()
+    pre_change_state = forms.Field(widget=DictionaryDisplayWidget)
+    changes = forms.Field(widget=DictionaryDisplayWidget)
+
+    class Meta:
+        model = ModelChange
+        fields = ('timestamp', 'user', 'remote_addr', 'remote_host',
+                  'model_type', 'model_pk', 'action', 'pre_change_state', 'changes',)
 
 
 class ReadOnlyAdminMixin(object):
@@ -43,3 +73,6 @@ class AuditAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
             'fields': ('pre_change_state', 'changes',),
         }),
     )
+
+
+admin.site.register(ModelChange, AuditAdmin)
