@@ -1,7 +1,6 @@
 django-auditlog
 ================
 
-A tool/example for django auditing (model change tracking).
-Partially based on https://github.com/Atomidata/django-audit-log.
+Automatic change tracking for django models with some additional support for Django Rest Framework.
 
-That project has since been updated as well.
+To use, install the app, add ```auditlog``` to your installed apps and ```auditlog.middleware.AuditMiddleware``` to the middleware classes. For use with DRF API Views, use the mixin in ```auditlog.view_audit```
