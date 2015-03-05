@@ -18,7 +18,7 @@ _ACTIONS = ('UPDATE', 'CREATE', 'DELETE')
 
 class BaseAuditModel(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='+', blank=True, null=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='+', blank=True, null=True, on_delete=models.SET_NULL)
     remote_addr = models.CharField(max_length=45, blank=True, null=True)
     remote_host = models.TextField(blank=True, null=True)
 
